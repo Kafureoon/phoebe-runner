@@ -1,0 +1,230 @@
+:root {
+  --ink: #2f201a;
+  --paper: #fff7df;
+  --cream: #ffe9a7;
+  --blue: #2f8bd3;
+  --shadow: rgba(65, 36, 18, 0.24);
+  --panel: rgba(255, 252, 236, 0.9);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at 12% 12%, rgba(255, 255, 255, 0.84) 0 9rem, transparent 9.2rem),
+    radial-gradient(circle at 84% 18%, rgba(255, 218, 119, 0.42) 0 7rem, transparent 7.4rem),
+    linear-gradient(135deg, #b9e8ff 0%, #fff0b8 48%, #ffd3b7 100%);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  color: var(--ink);
+  font-family: "Microsoft YaHei", "Trebuchet MS", "Lucida Console", sans-serif;
+}
+
+body::before {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  content: "";
+  opacity: 0.3;
+  background-image:
+    linear-gradient(90deg, rgba(47, 32, 26, 0.08) 1px, transparent 1px),
+    linear-gradient(rgba(47, 32, 26, 0.08) 1px, transparent 1px);
+  background-size: 18px 18px;
+  mask-image: linear-gradient(to bottom, transparent, #000 14%, #000 82%, transparent);
+}
+
+button {
+  color: inherit;
+  font: inherit;
+}
+
+.shell {
+  width: min(1060px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 34px 0 42px;
+  display: grid;
+  gap: 18px;
+}
+
+.intro,
+.game-card {
+  border: 4px solid var(--ink);
+  border-radius: 28px;
+  background: var(--panel);
+  box-shadow: 10px 10px 0 var(--shadow);
+}
+
+.intro {
+  min-height: 178px;
+  padding: 28px;
+  display: grid;
+  align-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.78rem;
+  font-weight: 900;
+  color: #6e4a22;
+}
+
+h1,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 10px;
+  font-size: clamp(3rem, 10vw, 6.8rem);
+  line-height: 0.84;
+  letter-spacing: -0.08em;
+  text-shadow: 4px 4px 0 #fff4c7, 8px 8px 0 rgba(47, 32, 26, 0.16);
+}
+
+.lead {
+  width: min(720px, 100%);
+  margin-bottom: 18px;
+  font-size: 1.02rem;
+  line-height: 1.7;
+}
+
+.control-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.control-strip span,
+.hud,
+.touch-controls button {
+  border: 3px solid var(--ink);
+  background: #fffaf0;
+  box-shadow: 4px 4px 0 rgba(47, 32, 26, 0.14);
+}
+
+.control-strip span {
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
+.game-card {
+  min-width: 0;
+  padding: 14px;
+}
+
+.hud {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 18px;
+  display: grid;
+  grid-template-columns: auto auto auto minmax(180px, 1fr);
+  gap: 16px;
+  align-items: center;
+}
+
+.hud-label {
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: #815a2b;
+}
+
+.hud strong {
+  font-family: "Lucida Console", "Courier New", monospace;
+  font-size: 1.22rem;
+}
+
+#sceneText {
+  min-width: 5em;
+  display: inline-block;
+}
+
+#statusText {
+  margin: 0;
+  justify-self: end;
+  font-weight: 900;
+}
+
+#gameCanvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 96 / 43;
+  border: 4px solid var(--ink);
+  border-radius: 18px;
+  background: #d8f2ff;
+  image-rendering: pixelated;
+  cursor: pointer;
+}
+
+.touch-controls {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+}
+
+.touch-controls button {
+  min-height: 46px;
+  border-radius: 16px;
+  font-weight: 900;
+  background: #fff2c1;
+  cursor: pointer;
+}
+
+.touch-controls button:active {
+  transform: translate(3px, 3px);
+  box-shadow: 1px 1px 0 rgba(47, 32, 26, 0.14);
+}
+
+.asset-credit {
+  margin: 10px 0 0;
+  color: #735636;
+  font-size: 0.78rem;
+  text-align: right;
+}
+
+@media (max-width: 760px) {
+  .shell {
+    width: min(100% - 18px, 1060px);
+    padding-top: 18px;
+  }
+
+  .intro,
+  .game-card {
+    border-width: 3px;
+    border-radius: 20px;
+    box-shadow: 6px 6px 0 var(--shadow);
+  }
+
+  .intro {
+    padding: 20px;
+  }
+
+  .hud {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  #statusText {
+    grid-column: 1 / -1;
+    justify-self: start;
+    font-size: 0.92rem;
+  }
+
+  .asset-credit {
+    text-align: left;
+  }
+}

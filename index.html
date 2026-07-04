@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>菲比快跑</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="intro" aria-labelledby="game-title">
+        <p class="eyebrow">pixel chase</p>
+        <h1 id="game-title">菲比快跑</h1>
+        <p class="lead">
+          菲比会在水岸庭院、花庭小径、月夜海岸和黑海岸遗迹里奔跑。2000 分后有坠落障碍，4000 分后有大障碍，6000 分后小型弹跳和大型弹跳会同时出现。
+        </p>
+        <div class="control-strip" aria-label="操作说明">
+          <span>空格 / ↑ / 点击：短按小跳，按住大跳</span>
+          <span>↓ / S：下蹲躲避</span>
+          <span>R：重新开始</span>
+        </div>
+      </section>
+
+      <section class="game-card" aria-label="游戏区域">
+        <div class="hud">
+          <div>
+            <span class="hud-label">score</span>
+            <strong id="scoreText">00000</strong>
+          </div>
+          <div>
+            <span class="hud-label">best</span>
+            <strong id="bestText">00000</strong>
+          </div>
+          <div>
+            <span class="hud-label">scene</span>
+            <strong id="sceneText">水岸庭院</strong>
+          </div>
+          <p id="statusText">按空格或点击画面开始</p>
+        </div>
+
+        <canvas id="gameCanvas" width="960" height="430" aria-label="菲比快跑游戏画面"></canvas>
+
+        <div class="touch-controls" aria-label="触屏操作">
+          <button id="jumpBtn" type="button">跳跃</button>
+          <button id="duckBtn" type="button">下蹲</button>
+          <button id="restartBtn" type="button">重开</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="./game.js" defer></script>
+  </body>
+</html>
