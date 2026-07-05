@@ -75,8 +75,10 @@
   const BIG_OBSTACLE_MAX_HEIGHT = 126;
   const BIG_OBSTACLE_MAX_WIDTH = 148;
   const BOUNCE_OBSTACLE_SCORE = 6000;
-  const BOUNCE_OBSTACLE_CHANCE = 0.42;
-  const BOUNCE_BIG_CHANCE = 0.34;
+  const DROP_OBSTACLE_CHANCE = 0.34;
+  const BOUNCE_DROP_CHANCE = 0.48;
+  const BOUNCE_OBSTACLE_CHANCE = 0.66;
+  const BOUNCE_BIG_CHANCE = 0.58;
   const BOUNCE_DURATION = 0.88;
   const BOUNCE_BIG_MIN_HEIGHT = 98;
   const BOUNCE_BIG_MAX_HEIGHT = 110;
@@ -1062,7 +1064,8 @@
     const bigPool = wantsBig
       ? pool.filter((type) => OBSTACLES[type].kind === "road" && BIG_OBSTACLE_TYPES.has(type))
       : [];
-    const canDrop = game.score >= DROP_OBSTACLE_SCORE && bigPool.length === 0 && Math.random() < 0.34;
+    const dropChance = game.score >= BOUNCE_OBSTACLE_SCORE ? BOUNCE_DROP_CHANCE : DROP_OBSTACLE_CHANCE;
+    const canDrop = game.score >= DROP_OBSTACLE_SCORE && bigPool.length === 0 && Math.random() < dropChance;
     const dropPool = canDrop ? pool.filter((type) => OBSTACLES[type].kind === "road") : [];
     const bouncePool =
       game.score >= BOUNCE_OBSTACLE_SCORE && dropPool.length > 0 && Math.random() < BOUNCE_OBSTACLE_CHANCE
@@ -1368,8 +1371,8 @@
     const scene = SCENES[index];
     const images = sceneImages[index];
     const farPan = game.sceneryDistance * 0.35 + index * 137;
-    const midPan = game.trackDistance * (scene.midTrackFactor ?? 0.5) + index * 211;
     const trackOffset = game.trackDistance;
+    const midPan = trackOffset + index * 211;
 
     ctx.save();
     ctx.globalAlpha = alpha;
