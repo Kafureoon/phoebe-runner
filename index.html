@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta http-equiv="Cache-Control" content="no-store" />
     <title>菲比快跑</title>
-    <link rel="stylesheet" href="./styles.css?v=202607050948" />
+    <link rel="stylesheet" href="./styles.css?v=202607051200" />
   </head>
   <body>
     <div id="rotateLock" class="rotate-lock" aria-hidden="true">
@@ -17,30 +17,94 @@
     </div>
     <main class="app-shell">
       <section id="mainMenu" class="main-menu" aria-labelledby="game-title">
-        <div class="menu-hero">
-          <div class="menu-title-wrap">
-            <h1 id="game-title">菲比快跑</h1>
+        <div class="menu-world" aria-hidden="true">
+          <div class="menu-sky"></div>
+          <div class="menu-layer menu-far">
+            <div class="menu-track">
+              <img src="./assets/scenes/scene1_far.png" alt="" /><img src="./assets/scenes/scene1_far.png" alt="" /><img src="./assets/scenes/scene1_far.png" alt="" /><img src="./assets/scenes/scene1_far.png" alt="" /><img src="./assets/scenes/scene1_far.png" alt="" /><img src="./assets/scenes/scene1_far.png" alt="" />
+            </div>
           </div>
-          <div class="menu-stage" aria-hidden="true">
-            <img class="menu-stage-bg" src="./assets/scenes/scene1_far.png" alt="" />
-            <img class="menu-stage-mid" src="./assets/scenes/scene1_mid_cut.png" alt="" />
-            <img class="menu-stage-ground" src="./assets/scenes/scene1_ground.png" alt="" />
-            <img class="menu-deco menu-deco-lotus" src="./assets/obstacles/gen_water_lotus_pot.png" alt="" />
-            <img class="menu-deco menu-deco-crystal" src="./assets/obstacles/gen_water_crystal.png" alt="" />
-            <img class="menu-phoebe" src="./assets/phoebe/idle.png" alt="" />
+          <div class="menu-layer menu-mid">
+            <div class="menu-track">
+              <img src="./assets/scenes/scene1_mid_cut.png" alt="" /><img src="./assets/scenes/scene1_mid_cut.png" alt="" /><img src="./assets/scenes/scene1_mid_cut.png" alt="" /><img src="./assets/scenes/scene1_mid_cut.png" alt="" /><img src="./assets/scenes/scene1_mid_cut.png" alt="" /><img src="./assets/scenes/scene1_mid_cut.png" alt="" />
+            </div>
+          </div>
+          <div class="menu-glow"></div>
+          <div class="menu-layer menu-ground">
+            <div class="menu-track">
+              <img src="./assets/scenes/scene1_ground.png" alt="" /><img src="./assets/scenes/scene1_ground.png" alt="" /><img src="./assets/scenes/scene1_ground.png" alt="" /><img src="./assets/scenes/scene1_ground.png" alt="" /><img src="./assets/scenes/scene1_ground.png" alt="" /><img src="./assets/scenes/scene1_ground.png" alt="" />
+            </div>
+          </div>
+          <img id="menuPhoebe" class="menu-phoebe" src="./assets/phoebe/run_0.png" alt="" />
+          <div class="menu-petals">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
           </div>
         </div>
-        <nav class="menu-buttons" aria-label="主菜单">
-          <button id="startBtn" class="menu-btn primary" type="button">开始游戏</button>
-          <button id="leaderboardBtn" class="menu-btn" type="button">排行榜</button>
-          <button id="helpBtn" class="menu-btn" type="button">帮助</button>
-        </nav>
+
+        <div class="menu-content">
+          <header class="menu-logo">
+            <span class="menu-logo-sub" aria-hidden="true">PHOEBE · RUNNER</span>
+            <h1 id="game-title" aria-label="菲比快跑">
+              <span class="logo-dash" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="logo-char" data-char="菲" aria-hidden="true">菲</span>
+              <span class="logo-char" data-char="比" aria-hidden="true">比</span>
+              <span class="logo-char" data-char="快" aria-hidden="true">快</span>
+              <span class="logo-char" data-char="跑" aria-hidden="true">跑</span>
+            </h1>
+          </header>
+          <nav class="menu-buttons" aria-label="主菜单">
+            <button id="startBtn" class="menu-btn primary" type="button">
+              <span class="btn-ico" aria-hidden="true">▶</span>
+              <span class="btn-label">开始游戏</span>
+            </button>
+            <button id="leaderboardBtn" class="menu-btn" type="button">
+              <span class="btn-ico" aria-hidden="true">★</span>
+              <span class="btn-label">排行榜</span>
+            </button>
+            <button id="helpBtn" class="menu-btn" type="button">
+              <span class="btn-ico" aria-hidden="true">？</span>
+              <span class="btn-label">帮助</span>
+            </button>
+          </nav>
+          <p id="menuBest" class="menu-best" hidden>最佳成绩 <b>00000</b></p>
+        </div>
+
+        <p class="menu-hint">空格 / ↑ 跳跃 · ↓ 下蹲 · 手机横屏：右屏跳 左屏蹲</p>
       </section>
 
       <section id="gameScreen" class="game-screen is-hidden" aria-label="游戏画面" hidden>
         <canvas id="gameCanvas" width="960" height="430" aria-label="菲比快跑游戏画面"></canvas>
         <div id="scoreOverlay" class="score-overlay">00000</div>
         <button id="exitGameBtn" class="exit-game" type="button" aria-label="返回主菜单" hidden></button>
+        <div id="resultOverlay" class="result-overlay is-hidden" role="dialog" aria-modal="true" aria-labelledby="resultTitle">
+          <div class="result-panel">
+            <p id="resultBadge" class="result-badge">本局结束</p>
+            <h2 id="resultTitle">结算</h2>
+            <div class="result-score">
+              <span>本局分数</span>
+              <b id="resultScore">00000</b>
+            </div>
+            <div class="result-stats">
+              <div>
+                <span>最佳</span>
+                <b id="resultBest">00000</b>
+              </div>
+              <div>
+                <span>速度</span>
+                <b id="resultSpeed">Lv.1</b>
+              </div>
+              <div>
+                <span>排行</span>
+                <b id="resultRank">提交中</b>
+              </div>
+            </div>
+            <p class="result-hint">R / Enter 再跑一次，Esc 返回主菜单</p>
+            <div class="result-actions">
+              <button id="resultRestartBtn" class="result-btn primary" type="button">再跑一次</button>
+              <button id="resultMenuBtn" class="result-btn" type="button">主菜单</button>
+            </div>
+          </div>
+        </div>
         <div class="touch-zones" aria-hidden="true">
           <button id="duckBtn" class="touch-zone duck" type="button" tabindex="-1" aria-label="下蹲"></button>
           <button id="jumpBtn" class="touch-zone jump" type="button" tabindex="-1" aria-label="跳跃"></button>
@@ -81,6 +145,6 @@
       </dialog>
     </main>
 
-    <script src="./game.js?v=202607050948" defer></script>
+    <script src="./game.js?v=202607051200" defer></script>
   </body>
 </html>

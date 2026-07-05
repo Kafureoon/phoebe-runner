@@ -20,6 +20,18 @@
   const exitGameBtn = document.querySelector("#exitGameBtn");
   const jumpBtn = document.querySelector("#jumpBtn");
   const duckBtn = document.querySelector("#duckBtn");
+  const resultOverlay = document.querySelector("#resultOverlay");
+  const resultBadge = document.querySelector("#resultBadge");
+  const resultScore = document.querySelector("#resultScore");
+  const resultBest = document.querySelector("#resultBest");
+  const resultSpeed = document.querySelector("#resultSpeed");
+  const resultRank = document.querySelector("#resultRank");
+  const resultRestartBtn = document.querySelector("#resultRestartBtn");
+  const resultMenuBtn = document.querySelector("#resultMenuBtn");
+  const menuPhoebe = document.querySelector("#menuPhoebe");
+  const menuBest = document.querySelector("#menuBest");
+  const menuBestValue = menuBest?.querySelector("b");
+  const startBtnLabel = startBtn.querySelector(".btn-label") || startBtn;
 
   const WIDTH = 960;
   const HEIGHT = 430;
@@ -32,7 +44,15 @@
   const GRAVITY = 1850;
   const JUMP_SPEED = -735;
   const SMALL_JUMP_SPEED = -590;
-  const BIG_JUMP_HOLD_TIME = 0.12;
+  const BIG_JUMP_HOLD_TIME = 0.18;
+  const JUMP_HOLD_GRAVITY_SCALE = 0.46;
+  const JUMP_RELEASE_CUTOFF_SPEED = -500;
+  const FALL_GRAVITY_MULTIPLIER = 1.06;
+  const AIR_DUCK_GRAVITY_MULTIPLIER = 1.32;
+  const JUMP_BUFFER_TIME = 0.11;
+  const COYOTE_TIME = 0.075;
+  const DUCK_ENTER_SPEED = 18;
+  const DUCK_EXIT_SPEED = 12;
   const SCORE_DISTANCE_UNIT = 10.5;
   const SPEED_BASE = 345;
   const SPEED_STEP_SCORE = 500;
@@ -68,6 +88,7 @@
   const BEST_KEY = "phoebe-runner-best-v2";
   const PLAYER_NAME_KEY = "phoebe-runner-player-name";
   const LEADERBOARD_API = "./api/leaderboard";
+  const RUN_SESSION_API = "./api/run/start";
 
   const colors = {
     ink: "#2a2438",
@@ -328,10 +349,10 @@
 
   function enableStartWhenAssetsReady() {
     startBtn.disabled = true;
-    startBtn.textContent = "加载素材中";
+    startBtnLabel.textContent = "加载素材中";
     waitForAssets().then(() => {
       startBtn.disabled = false;
-      startBtn.textContent = "开始游戏";
+      startBtnLabel.textContent = "开始游戏";
     });
   }
 
@@ -375,14 +396,20 @@
         grounded: true,
         ducking: false,
         duckTime: 0,
+        duckBlend: 0,
         jumpTime: 0,
-        jumpBoosted: false,
+        jumpHoldTime: 0,
+        jumpBuffer: 0,
+        coyoteTime: COYOTE_TIME,
+        jumpReleased: true,
       },
       obstacles: [],
       powerups: [],
       dust: [],
       shieldBits: [],
       scoreSubmitted: false,
+      runSession: null,
+      runSessionPending: false,
       motes: makeMotes(),
       weather: makeWeather(),
     };
@@ -469,6 +496,32 @@
     return name;
   }
 
+  const MENU_RUN_FRAME_MS = 72;
+  const menuRunFrames = Array.from({ length: 12 }, (_, i) => {
+    const image = new Image();
+    image.src = `./assets/phoebe/run_${i}.png`;
+    return image;
+  });
+  const prefersReducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+  let menuRunIndex = 0;
+  let menuRunLast = 0;
+
+  function updateMenuPhoebe(now) {
+    if (!menuPhoebe || mainMenu.hidden || prefersReducedMotion?.matches) return;
+    if (now - menuRunLast < MENU_RUN_FRAME_MS) return;
+    menuRunLast = now;
+    menuRunIndex = (menuRunIndex + 1) % menuRunFrames.length;
+    const frame = menuRunFrames[menuRunIndex];
+    if (frame.complete && frame.naturalWidth) menuPhoebe.src = frame.src;
+  }
+
+  function updateMenuBest() {
+    if (!menuBest || !menuBestValue) return;
+    const best = Math.max(0, Math.floor(bestScore));
+    menuBest.hidden = best <= 0;
+    menuBestValue.textContent = String(best).padStart(5, "0");
+  }
+
   function setMenuVisible(visible) {
     document.body.classList.toggle("is-playing", !visible);
     mainMenu.hidden = !visible;
@@ -486,7 +539,9 @@
     game = makeGame();
     jumpHeld = false;
     duckHeld = false;
+    hideResultOverlay();
     closeAllDialogs();
+    updateMenuBest();
     loadLeaderboard();
     render();
   }
@@ -497,6 +552,7 @@
       returnMenuTimer = 0;
     }
     closeAllDialogs();
+    hideResultOverlay();
     setMenuVisible(false);
     requestAnimationFrame(() => resizeCanvas());
   }
@@ -582,10 +638,22 @@
     game.scoreSubmitted = true;
     const name = currentPlayerName();
     try {
+      if (!game.runSession && game.runSessionPending) await waitForRunSessionReady(900);
+      const session = game.runSession;
+      if (!session?.id || !session?.token) throw new Error("run_session_required");
       const response = await fetch(LEADERBOARD_API, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name, score }),
+        body: JSON.stringify({
+          name,
+          score,
+          runId: session.id,
+          token: session.token,
+          elapsedMs: Math.round(game.runTime * 1000),
+          distance: Math.round(game.distance),
+          bonus: Math.round(game.bonus),
+          speed: Math.round(game.speed),
+        }),
       });
       const payload = await response.json();
       if (!response.ok || !payload.ok) throw new Error(payload.error || "submit_failed");
@@ -595,6 +663,73 @@
     } catch {
       return "提交失败";
     }
+  }
+
+  async function startRunSession(targetGame) {
+    targetGame.runSession = null;
+    targetGame.runSessionPending = true;
+    try {
+      const response = await fetch(RUN_SESSION_API, {
+        method: "POST",
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "run_start_failed");
+      if (game === targetGame) {
+        targetGame.runSession = {
+          id: payload.runId,
+          token: payload.token,
+        };
+      }
+    } catch (error) {
+      console.warn("Phoebe Runner run session failed:", error);
+    } finally {
+      if (game === targetGame) targetGame.runSessionPending = false;
+    }
+  }
+
+  function waitForRunSessionReady(timeoutMs) {
+    const start = performance.now();
+    return new Promise((resolve) => {
+      const poll = () => {
+        if (!game.runSessionPending || performance.now() - start >= timeoutMs) {
+          resolve();
+          return;
+        }
+        window.setTimeout(poll, 40);
+      };
+      poll();
+    });
+  }
+
+  function showResultOverlay(score, previousBest, rankText) {
+    if (!resultOverlay) return;
+    const isNewBest = score > previousBest;
+    if (resultBadge) resultBadge.textContent = isNewBest ? "新纪录" : "本局结束";
+    if (resultScore) resultScore.textContent = padScore(score);
+    if (resultBest) resultBest.textContent = padScore(Math.max(bestScore, score));
+    if (resultSpeed) resultSpeed.textContent = `Lv.${speedLevel(score) + 1}`;
+    updateResultRank(rankText);
+    resultOverlay.classList.remove("is-hidden");
+    resultOverlay.removeAttribute("aria-hidden");
+    requestAnimationFrame(() => resultRestartBtn?.focus({ preventScroll: true }));
+  }
+
+  function updateResultRank(text) {
+    if (resultRank) resultRank.textContent = text || "已记录";
+  }
+
+  function normalizeResultRankText(text) {
+    const value = String(text || "").trim();
+    if (!value) return "已记录";
+    if (value.includes("失败") || value.toLowerCase().includes("fail")) return "提交失败";
+    const rank = value.match(/\d+/)?.[0];
+    return rank ? `第 ${rank} 名` : "已记录";
+  }
+
+  function hideResultOverlay() {
+    if (!resultOverlay) return;
+    resultOverlay.classList.add("is-hidden");
+    resultOverlay.setAttribute("aria-hidden", "true");
   }
 
   function resizeCanvas() {
@@ -615,8 +750,10 @@
     game = makeGame();
     jumpHeld = false;
     duckHeld = false;
+    hideResultOverlay();
     showGame();
     game.mode = "running";
+    startRunSession(game);
   }
 
   function jump() {
@@ -626,25 +763,16 @@
       if (game.mode !== "running") return;
     }
     const player = game.player;
-    if (game.mode === "running" && player.grounded) {
-      duckHeld = false;
-      player.ducking = false;
-      player.duckTime = 0;
-      player.width = PLAYER_W;
-      player.height = PLAYER_H;
-      player.y = GROUND_Y - PLAYER_H;
-      player.vy = SMALL_JUMP_SPEED;
-      player.grounded = false;
-      player.jumpTime = 0;
-      player.jumpBoosted = false;
-      spawnDust(player.x + 28, GROUND_Y - 4, 4);
-    }
+    player.jumpBuffer = JUMP_BUFFER_TIME;
+    tryStartJump(player);
   }
 
   function releaseJump() {
     jumpHeld = false;
     const player = game.player;
     if (game.mode !== "running" || player.grounded) return;
+    player.jumpReleased = true;
+    if (player.vy < JUMP_RELEASE_CUTOFF_SPEED) player.vy = JUMP_RELEASE_CUTOFF_SPEED;
   }
 
   function setDuckIntent(active) {
@@ -657,14 +785,15 @@
 
   function endGame() {
     if (game.mode === "gameover") return;
+    const finalScore = game.score;
+    const previousBest = bestScore;
     game.mode = "gameover";
     game.shake = 10;
-    writeBestScore(game.score);
-    submitScore(game.score);
-    returnMenuTimer = window.setTimeout(() => {
-      returnMenuTimer = 0;
-      showMenu();
-    }, 1100);
+    writeBestScore(finalScore);
+    showResultOverlay(finalScore, previousBest, "提交中");
+    submitScore(finalScore).then((rankText) => {
+      updateResultRank(normalizeResultRankText(rankText));
+    });
   }
 
   function update(dt) {
@@ -705,44 +834,90 @@
 
   function updatePlayer(dt) {
     const player = game.player;
+    if (player.jumpBuffer > 0) player.jumpBuffer = Math.max(0, player.jumpBuffer - dt);
+
     if (player.grounded) {
-      player.ducking = duckHeld;
-      player.duckTime = player.ducking ? player.duckTime + dt : Math.max(0, player.duckTime - dt * 5.5);
-      player.width = player.ducking ? DUCK_W : PLAYER_W;
-      player.height = player.ducking ? DUCK_H : PLAYER_H;
-      player.y = GROUND_Y - player.height;
+      player.coyoteTime = COYOTE_TIME;
+      if (tryStartJump(player)) return;
+      updateGroundedDuck(player, dt);
       return;
     }
 
+    player.coyoteTime = Math.max(0, player.coyoteTime - dt);
     player.jumpTime += dt;
-    boostJumpIfHeld(player);
+    const holdingJump = jumpHeld && !player.jumpReleased && player.jumpHoldTime < BIG_JUMP_HOLD_TIME && player.vy < 0;
+    if (holdingJump) {
+      player.jumpHoldTime = Math.min(BIG_JUMP_HOLD_TIME, player.jumpHoldTime + dt);
+    }
     player.ducking = false;
-    player.duckTime = 0;
+    player.duckTime = Math.max(0, player.duckTime - dt * 6);
+    player.duckBlend = moveToward(player.duckBlend, 0, DUCK_EXIT_SPEED * dt);
     player.width = PLAYER_W;
     player.height = PLAYER_H;
-    player.vy += GRAVITY * dt;
+    player.vy += jumpGravity(player, holdingJump) * dt;
     player.y += player.vy * dt;
 
     if (player.y >= GROUND_Y - PLAYER_H) {
       player.y = GROUND_Y - PLAYER_H;
       player.vy = 0;
       player.grounded = true;
+      player.coyoteTime = COYOTE_TIME;
       player.jumpTime = 0;
-      player.jumpBoosted = false;
+      player.jumpHoldTime = 0;
+      player.jumpReleased = true;
       spawnDust(player.x + 24, GROUND_Y - 4, 5);
+      tryStartJump(player);
     }
   }
 
-  function boostJumpIfHeld(player) {
-    if (!jumpHeld || player.jumpBoosted || player.jumpTime < BIG_JUMP_HOLD_TIME) return;
+  function tryStartJump(player) {
+    if (game.mode !== "running" || player.jumpBuffer <= 0) return false;
+    if (!player.grounded && player.coyoteTime <= 0) return false;
+    startPlayerJump(player);
+    return true;
+  }
 
-    const t = player.jumpTime;
-    const bigY = GROUND_Y - PLAYER_H + JUMP_SPEED * t + 0.5 * GRAVITY * t * t;
-    const bigVy = JUMP_SPEED + GRAVITY * t;
-    player.y = Math.min(player.y, bigY);
-    player.vy = Math.min(player.vy, bigVy);
-    player.jumpBoosted = true;
-    spawnDust(player.x + 24, player.y + PLAYER_H - 4, 2);
+  function startPlayerJump(player) {
+    duckHeld = false;
+    player.ducking = false;
+    player.duckTime = 0;
+    player.duckBlend = 0;
+    player.width = PLAYER_W;
+    player.height = PLAYER_H;
+    player.y = GROUND_Y - PLAYER_H;
+    player.vy = SMALL_JUMP_SPEED;
+    player.grounded = false;
+    player.coyoteTime = 0;
+    player.jumpTime = 0;
+    player.jumpHoldTime = 0;
+    player.jumpReleased = !jumpHeld;
+    player.jumpBuffer = 0;
+    spawnDust(player.x + 28, GROUND_Y - 4, 4);
+  }
+
+  function updateGroundedDuck(player, dt) {
+    const target = duckHeld ? 1 : 0;
+    const speed = target > player.duckBlend ? DUCK_ENTER_SPEED : DUCK_EXIT_SPEED;
+    player.duckBlend = moveToward(player.duckBlend, target, speed * dt);
+    const duckAmount = smoothstep(player.duckBlend);
+    const collisionAmount = duckHeld ? 1 : duckAmount;
+    player.ducking = duckHeld || player.duckBlend > 0.08;
+    player.duckTime = duckHeld ? Math.min(0.42, player.duckTime + dt) : Math.max(0, player.duckTime - dt * 5.5);
+    player.width = lerp(PLAYER_W, DUCK_W, collisionAmount);
+    player.height = lerp(PLAYER_H, DUCK_H, collisionAmount);
+    player.y = GROUND_Y - player.height;
+  }
+
+  function jumpGravity(player, holdingJump) {
+    let gravity = GRAVITY;
+    if (holdingJump) {
+      gravity *= JUMP_HOLD_GRAVITY_SCALE;
+    } else if (player.vy < 0 && player.jumpReleased) {
+      gravity *= FALL_GRAVITY_MULTIPLIER;
+    } else if (player.vy > 0) {
+      gravity *= duckHeld ? AIR_DUCK_GRAVITY_MULTIPLIER : FALL_GRAVITY_MULTIPLIER;
+    }
+    return gravity;
   }
 
   function updateObstacles(dt) {
@@ -1669,6 +1844,7 @@
     if (!lastTime) lastTime = now;
     const dt = Math.min(0.033, (now - lastTime) / 1000);
     lastTime = now;
+    updateMenuPhoebe(now);
     update(dt);
     render();
     requestAnimationFrame(tick);
@@ -1679,6 +1855,16 @@
       if (event.code === "Enter") {
         event.preventDefault();
         if (!startBtn.disabled) openDialog(nameDialog);
+      }
+      return;
+    }
+    if (game.mode === "gameover") {
+      if (["Enter", "Space", "KeyR"].includes(event.code)) {
+        event.preventDefault();
+        if (!event.repeat) restartGame();
+      } else if (event.code === "Escape") {
+        event.preventDefault();
+        showMenu();
       }
       return;
     }
@@ -1734,6 +1920,21 @@
     return Math.max(min, Math.min(max, value));
   }
 
+  function lerp(start, end, amount) {
+    return start + (end - start) * amount;
+  }
+
+  function smoothstep(value) {
+    const t = clamp(value, 0, 1);
+    return t * t * (3 - 2 * t);
+  }
+
+  function moveToward(value, target, maxDelta) {
+    if (value < target) return Math.min(target, value + maxDelta);
+    if (value > target) return Math.max(target, value - maxDelta);
+    return target;
+  }
+
   function rect(x, y, width, height, color) {
     ctx.fillStyle = color;
     ctx.fillRect(Math.round(x), Math.round(y), Math.round(width), Math.round(height));
@@ -1774,6 +1975,8 @@
   });
   helpBtn.addEventListener("click", () => openDialog(helpDialog));
   exitGameBtn.addEventListener("click", showMenu);
+  resultRestartBtn?.addEventListener("click", restartGame);
+  resultMenuBtn?.addEventListener("click", showMenu);
   refreshLeaderboardBtn.addEventListener("click", loadLeaderboard);
   document.querySelectorAll("[data-close-dialog]").forEach((button) => {
     button.addEventListener("click", () => button.closest("dialog")?.close());
@@ -1794,6 +1997,7 @@
   if (savedName) playerNameInput.value = savedName;
   resizeCanvas();
   setMenuVisible(true);
+  updateMenuBest();
   loadLeaderboard();
   render();
   requestAnimationFrame(tick);

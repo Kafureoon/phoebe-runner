@@ -10,6 +10,17 @@ const DATA_DIR = path.join(ROOT, 'data');
 const LEADERBOARD_FILE = path.join(DATA_DIR, 'leaderboard.json');
 const MAX_BODY = 16 * 1024;
 const MAX_ENTRIES = 200;
+const RUN_SESSION_TTL = 2 * 60 * 60 * 1000;
+const MIN_RUN_MS = 900;
+const SCORE_DISTANCE_UNIT = 10.5;
+const SPEED_BASE = 345;
+const SPEED_STEP_SCORE = 500;
+const SPEED_STEP_GAIN = 55;
+const SPEED_MAX = 840;
+const SCORE_MARGIN = 120;
+const BONUS_PER_SECOND_ALLOWANCE = 28;
+
+const runSessions = new Map();
 
 const mime = {
   '.html': 'text/html; charset=utf-8',
@@ -93,6 +104,89 @@ function normalizeScore(value) {
   return Math.max(0, Math.min(99999999, Math.floor(number)));
 }
 
+function normalizeMetric(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return Math.max(0, Math.floor(number));
+}
+
+function speedLevel(score) {
+  return Math.floor(Math.max(0, score) / SPEED_STEP_SCORE);
+}
+
+function speedForScore(score) {
+  return Math.min(SPEED_MAX, SPEED_BASE + speedLevel(score) * SPEED_STEP_GAIN);
+}
+
+function maxPlausibleScore(elapsedMs) {
+  let remaining = Math.max(0, elapsedMs) / 1000;
+  let distance = 0;
+  let score = 0;
+  while (remaining > 0) {
+    const step = Math.min(0.25, remaining);
+    distance += speedForScore(score) * step;
+    score = Math.floor(distance / SCORE_DISTANCE_UNIT);
+    remaining -= step;
+  }
+  const bonusAllowance = Math.ceil((elapsedMs / 1000) * BONUS_PER_SECOND_ALLOWANCE + SCORE_MARGIN);
+  return score + bonusAllowance;
+}
+
+function cleanupRunSessions(now = Date.now()) {
+  for (const [id, session] of runSessions) {
+    const ttl = session.submittedAt ? 60 * 1000 : RUN_SESSION_TTL;
+    if (now - session.startedAt > ttl) runSessions.delete(id);
+  }
+}
+
+function hashToken(token) {
+  return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+
+function safeEqualHash(a, b) {
+  const left = Buffer.from(String(a), 'hex');
+  const right = Buffer.from(String(b), 'hex');
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function validateRunSubmission(body, score) {
+  cleanupRunSessions();
+  const runId = String(body.runId || '');
+  const token = String(body.token || body.runToken || '');
+  const session = runSessions.get(runId);
+  if (!session || !token || !safeEqualHash(hashToken(token), session.tokenHash)) {
+    return { ok: false, error: 'run_session_required' };
+  }
+  if (session.submittedAt) return { ok: false, error: 'run_already_submitted' };
+
+  const now = Date.now();
+  const serverElapsedMs = Math.max(0, now - session.startedAt);
+  const clientElapsedMs = normalizeMetric(body.elapsedMs);
+  if (clientElapsedMs !== null && clientElapsedMs > serverElapsedMs + 8000) {
+    return { ok: false, error: 'bad_run_time' };
+  }
+
+  const elapsedMs = clientElapsedMs === null ? serverElapsedMs : Math.min(serverElapsedMs, clientElapsedMs);
+  if (elapsedMs < MIN_RUN_MS && score > 35) return { ok: false, error: 'run_too_short' };
+  if (score > maxPlausibleScore(elapsedMs)) return { ok: false, error: 'score_too_fast' };
+
+  const distance = normalizeMetric(body.distance);
+  const bonus = normalizeMetric(body.bonus);
+  if (distance !== null && bonus !== null) {
+    const telemetryScore = Math.floor(distance / SCORE_DISTANCE_UNIT) + bonus;
+    if (Math.abs(telemetryScore - score) > 4) return { ok: false, error: 'score_mismatch' };
+    const bonusLimit = Math.ceil((elapsedMs / 1000) * BONUS_PER_SECOND_ALLOWANCE + SCORE_MARGIN);
+    if (bonus > bonusLimit) return { ok: false, error: 'bonus_too_high' };
+  }
+
+  const speed = normalizeMetric(body.speed);
+  if (speed !== null && speed > speedForScore(score) + SPEED_STEP_GAIN + 20) {
+    return { ok: false, error: 'speed_too_high' };
+  }
+
+  return { ok: true, session };
+}
+
 function json(res, status, payload) {
   const body = JSON.stringify(payload);
   res.writeHead(status, {
@@ -128,6 +222,30 @@ function readJsonBody(req) {
   });
 }
 
+function handleRunStart(req, res) {
+  if (req.method !== 'POST') {
+    res.writeHead(405, { allow: 'POST' });
+    res.end('Method Not Allowed');
+    return;
+  }
+
+  cleanupRunSessions();
+  const runId = crypto.randomUUID();
+  const token = crypto.randomBytes(32).toString('base64url');
+  const startedAt = Date.now();
+  runSessions.set(runId, {
+    tokenHash: hashToken(token),
+    startedAt,
+    submittedAt: 0,
+  });
+  return json(res, 201, {
+    ok: true,
+    runId,
+    token,
+    startedAt: new Date(startedAt).toISOString(),
+  });
+}
+
 function handleLeaderboard(req, res, url) {
   if (req.method === 'GET') {
     const limit = Math.max(1, Math.min(50, Number(url.searchParams.get('limit') || 20) || 20));
@@ -139,6 +257,8 @@ function handleLeaderboard(req, res, url) {
       .then((body) => {
         const score = normalizeScore(body.score);
         if (score <= 0) return json(res, 400, { ok: false, error: 'score_required' });
+        const runCheck = validateRunSubmission(body, score);
+        if (!runCheck.ok) return json(res, 403, { ok: false, error: runCheck.error });
         const name = sanitizeName(body.name);
         const key = nameKey(name);
         const currentEntries = readLeaderboard();
@@ -160,6 +280,7 @@ function handleLeaderboard(req, res, url) {
 
         const withoutSameName = currentEntries.filter((item) => nameKey(item.name) !== key);
         const entries = writeLeaderboard([entry, ...withoutSameName]);
+        runCheck.session.submittedAt = Date.now();
         const rank = entries.findIndex((item) => nameKey(item.name) === key) + 1;
         return json(res, improved ? 201 : 200, {
           ok: true,
@@ -216,6 +337,7 @@ function serveStatic(req, res, url) {
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host || `${HOST}:${PORT}`}`);
+  if (url.pathname === '/api/run/start') return handleRunStart(req, res);
   if (url.pathname === '/api/leaderboard') return handleLeaderboard(req, res, url);
   return serveStatic(req, res, url);
 });
