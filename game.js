@@ -17,6 +17,7 @@
   const leaderboardList = document.querySelector("#leaderboardList");
   const leaderboardEmpty = document.querySelector("#leaderboardEmpty");
   const scoreOverlay = document.querySelector("#scoreOverlay");
+  const statusOverlay = document.querySelector("#statusOverlay");
   const exitGameBtn = document.querySelector("#exitGameBtn");
   const jumpBtn = document.querySelector("#jumpBtn");
   const duckBtn = document.querySelector("#duckBtn");
@@ -1358,6 +1359,7 @@
     ctx.restore();
 
     scoreOverlay.textContent = padScore(game.score);
+    updateStatusOverlay();
   }
 
   function runningStatusText() {
@@ -1365,6 +1367,39 @@
     const level = speedLevel(game.score) + 1;
     if (game.shield.active) return `护盾 ${Math.ceil(game.shield.timeLeft)}s / 速度 Lv.${level}`;
     return `菲比奔跑中 / 速度 Lv.${level}`;
+  }
+
+  function updateStatusOverlay() {
+    if (!statusOverlay) return;
+    if (game.mode !== "running") {
+      statusOverlay.hidden = true;
+      statusOverlay.replaceChildren();
+      return;
+    }
+
+    statusOverlay.hidden = false;
+    statusOverlay.replaceChildren();
+
+    const level = speedLevel(game.score) + 1;
+    addStatusPill(`速度 Lv.${level}`);
+
+    if (game.speed >= SPEED_MAX) {
+      addStatusPill("最高速", "warning");
+    } else {
+      const nextScore = (speedLevel(game.score) + 1) * SPEED_STEP_SCORE;
+      addStatusPill(`提速 ${Math.max(0, nextScore - game.score)}`);
+    }
+
+    if (game.shield.active && game.shield.timeLeft > 0) {
+      addStatusPill(`护盾 ${Math.ceil(game.shield.timeLeft)}s`, "shield");
+    }
+  }
+
+  function addStatusPill(text, tone = "") {
+    const pill = document.createElement("span");
+    pill.className = tone ? `status-pill ${tone}` : "status-pill";
+    pill.textContent = text;
+    statusOverlay.append(pill);
   }
 
   function drawScene(index, alpha) {

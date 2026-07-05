@@ -451,6 +451,40 @@ h1 .logo-char:nth-child(5) { --rot: 3.5deg; --bd: 0.42s; --dy: 0.018em; }
   text-shadow: 0 3px 0 rgba(47, 32, 26, .95), 0 0 10px rgba(47, 32, 26, .46);
   pointer-events: none;
 }
+.status-overlay {
+  position: fixed;
+  top: calc(14px + var(--safe-top));
+  right: calc(16px + var(--safe-right));
+  z-index: 15;
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  font-family: "Lucida Console", "Courier New", monospace;
+  font-size: clamp(0.74rem, 2.25vw, 1rem);
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: none;
+}
+.status-overlay[hidden] { display: none; }
+.status-pill {
+  min-width: 94px;
+  padding: 7px 10px 6px;
+  border: 2px solid rgba(42, 36, 56, .86);
+  border-radius: 999px;
+  background: rgba(255, 248, 215, .86);
+  box-shadow: 0 3px 0 rgba(47, 32, 26, .34), inset 0 0 0 2px rgba(255, 255, 255, .28);
+  color: #2a2438;
+  text-align: center;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, .45);
+}
+.status-pill.shield {
+  background: rgba(152, 237, 255, .9);
+  color: #173b5a;
+  box-shadow: 0 3px 0 rgba(27, 70, 102, .34), inset 0 0 0 2px rgba(255, 255, 255, .34);
+}
+.status-pill.warning {
+  background: rgba(255, 225, 132, .92);
+}
 .exit-game { display: none !important; }
 .touch-zones {
   position: fixed;
