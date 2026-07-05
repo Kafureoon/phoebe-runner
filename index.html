@@ -2,52 +2,85 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta http-equiv="Cache-Control" content="no-store" />
     <title>菲比快跑</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=202607050948" />
   </head>
   <body>
-    <main class="shell">
-      <section class="intro" aria-labelledby="game-title">
-        <p class="eyebrow">pixel chase</p>
-        <h1 id="game-title">菲比快跑</h1>
-        <p class="lead">
-          菲比会在水岸庭院、花庭小径、月夜海岸和黑海岸遗迹里奔跑。2000 分后有坠落障碍，4000 分后有大障碍，6000 分后小型弹跳和大型弹跳会同时出现。
-        </p>
-        <div class="control-strip" aria-label="操作说明">
-          <span>空格 / ↑ / 点击：短按小跳，按住大跳</span>
-          <span>↓ / S：下蹲躲避</span>
-          <span>R：重新开始</span>
+    <div id="rotateLock" class="rotate-lock" aria-hidden="true">
+      <div class="rotate-card">
+        <div class="rotate-icon">↻</div>
+        <div class="rotate-title">请横屏</div>
+        <div class="rotate-subtitle">横屏后进入菜单和游戏</div>
+      </div>
+    </div>
+    <main class="app-shell">
+      <section id="mainMenu" class="main-menu" aria-labelledby="game-title">
+        <div class="menu-hero">
+          <div class="menu-title-wrap">
+            <h1 id="game-title">菲比快跑</h1>
+          </div>
+          <div class="menu-stage" aria-hidden="true">
+            <img class="menu-stage-bg" src="./assets/scenes/scene1_far.png" alt="" />
+            <img class="menu-stage-mid" src="./assets/scenes/scene1_mid_cut.png" alt="" />
+            <img class="menu-stage-ground" src="./assets/scenes/scene1_ground.png" alt="" />
+            <img class="menu-deco menu-deco-lotus" src="./assets/obstacles/gen_water_lotus_pot.png" alt="" />
+            <img class="menu-deco menu-deco-crystal" src="./assets/obstacles/gen_water_crystal.png" alt="" />
+            <img class="menu-phoebe" src="./assets/phoebe/idle.png" alt="" />
+          </div>
         </div>
+        <nav class="menu-buttons" aria-label="主菜单">
+          <button id="startBtn" class="menu-btn primary" type="button">开始游戏</button>
+          <button id="leaderboardBtn" class="menu-btn" type="button">排行榜</button>
+          <button id="helpBtn" class="menu-btn" type="button">帮助</button>
+        </nav>
       </section>
 
-      <section class="game-card" aria-label="游戏区域">
-        <div class="hud">
-          <div>
-            <span class="hud-label">score</span>
-            <strong id="scoreText">00000</strong>
-          </div>
-          <div>
-            <span class="hud-label">best</span>
-            <strong id="bestText">00000</strong>
-          </div>
-          <div>
-            <span class="hud-label">scene</span>
-            <strong id="sceneText">水岸庭院</strong>
-          </div>
-          <p id="statusText">按空格或点击画面开始</p>
-        </div>
-
+      <section id="gameScreen" class="game-screen is-hidden" aria-label="游戏画面" hidden>
         <canvas id="gameCanvas" width="960" height="430" aria-label="菲比快跑游戏画面"></canvas>
-
-        <div class="touch-controls" aria-label="触屏操作">
-          <button id="jumpBtn" type="button">跳跃</button>
-          <button id="duckBtn" type="button">下蹲</button>
-          <button id="restartBtn" type="button">重开</button>
+        <div id="scoreOverlay" class="score-overlay">00000</div>
+        <button id="exitGameBtn" class="exit-game" type="button" aria-label="返回主菜单" hidden></button>
+        <div class="touch-zones" aria-hidden="true">
+          <button id="duckBtn" class="touch-zone duck" type="button" tabindex="-1" aria-label="下蹲"></button>
+          <button id="jumpBtn" class="touch-zone jump" type="button" tabindex="-1" aria-label="跳跃"></button>
         </div>
       </section>
+
+      <dialog id="leaderboardDialog" class="menu-dialog">
+        <div class="dialog-head">
+          <h2>排行榜</h2>
+          <button class="dialog-close" data-close-dialog type="button">×</button>
+        </div>
+        <ol id="leaderboardList" class="leaderboard-list"></ol>
+        <p id="leaderboardEmpty" class="dialog-empty">暂无成绩。</p>
+        <button id="refreshLeaderboardBtn" class="menu-btn slim" type="button">刷新</button>
+      </dialog>
+
+      <dialog id="helpDialog" class="menu-dialog">
+        <div class="dialog-head">
+          <h2>帮助</h2>
+          <button class="dialog-close" data-close-dialog type="button">×</button>
+        </div>
+        <div class="help-text">
+          <p>电脑：空格 / ↑ / W 跳跃，按住可以跳得更高；↓ / S 下蹲；R 重开。</p>
+          <p>手机：右半屏跳跃，左半屏下蹲。横屏游玩效果最好。</p>
+        </div>
+      </dialog>
+
+      <dialog id="nameDialog" class="menu-dialog compact-dialog">
+        <div class="dialog-head">
+          <h2>玩家名</h2>
+          <button class="dialog-close" data-close-dialog type="button">×</button>
+        </div>
+        <label class="name-field">
+          <span>输入昵称，成绩会用这个名字上榜</span>
+          <input id="playerNameInput" maxlength="18" autocomplete="nickname" placeholder="菲比玩家" />
+        </label>
+        <button id="confirmStartBtn" class="menu-btn primary slim" type="button">开始跑</button>
+      </dialog>
     </main>
 
-    <script src="./game.js" defer></script>
+    <script src="./game.js?v=202607050948" defer></script>
   </body>
 </html>

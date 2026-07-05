@@ -7,3 +7,5 @@ desktop.ini
 node_modules/
 dist/
 build/
+# Runtime leaderboard data
+data/

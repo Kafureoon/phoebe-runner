@@ -3,13 +3,23 @@
 
   const canvas = document.querySelector("#gameCanvas");
   const ctx = canvas.getContext("2d");
-  const scoreText = document.querySelector("#scoreText");
-  const bestText = document.querySelector("#bestText");
-  const sceneText = document.querySelector("#sceneText");
-  const statusText = document.querySelector("#statusText");
+  const mainMenu = document.querySelector("#mainMenu");
+  const gameScreen = document.querySelector("#gameScreen");
+  const playerNameInput = document.querySelector("#playerNameInput");
+  const startBtn = document.querySelector("#startBtn");
+  const confirmStartBtn = document.querySelector("#confirmStartBtn");
+  const leaderboardBtn = document.querySelector("#leaderboardBtn");
+  const helpBtn = document.querySelector("#helpBtn");
+  const leaderboardDialog = document.querySelector("#leaderboardDialog");
+  const helpDialog = document.querySelector("#helpDialog");
+  const nameDialog = document.querySelector("#nameDialog");
+  const refreshLeaderboardBtn = document.querySelector("#refreshLeaderboardBtn");
+  const leaderboardList = document.querySelector("#leaderboardList");
+  const leaderboardEmpty = document.querySelector("#leaderboardEmpty");
+  const scoreOverlay = document.querySelector("#scoreOverlay");
+  const exitGameBtn = document.querySelector("#exitGameBtn");
   const jumpBtn = document.querySelector("#jumpBtn");
   const duckBtn = document.querySelector("#duckBtn");
-  const restartBtn = document.querySelector("#restartBtn");
 
   const WIDTH = 960;
   const HEIGHT = 430;
@@ -56,6 +66,8 @@
   const TILE_OVERLAP = 8;
   const WEATHER_LIMIT = 64;
   const BEST_KEY = "phoebe-runner-best-v2";
+  const PLAYER_NAME_KEY = "phoebe-runner-player-name";
+  const LEADERBOARD_API = "./api/leaderboard";
 
   const colors = {
     ink: "#2a2438",
@@ -212,6 +224,9 @@
     "s4Obelisk",
   ]);
 
+  const assetPromises = [];
+  let assetsReadyPromise = null;
+
   const OBSTACLES = {
     s1Bollard: obstacle("gen_water_bollard.png", "road", 48, 65, [8, 8, 8, 5]),
     s1LotusPot: obstacle("gen_water_lotus_pot.png", "road", 58, 58, [8, 10, 8, 5]),
@@ -261,6 +276,7 @@
   let bestScore = readBestScore();
   let duckHeld = false;
   let jumpHeld = false;
+  let returnMenuTimer = 0;
   let game = makeGame();
 
   function obstacle(file, kind, width, height, hit, minScore = 0) {
@@ -280,8 +296,43 @@
 
   function loadImage(src) {
     const image = new Image();
-    image.src = src;
+    const ready = new Promise((resolve) => {
+      let settled = false;
+      const finish = (ok) => {
+        if (settled) return;
+        settled = true;
+        resolve({ src, ok });
+      };
+      image.onload = () => finish(true);
+      image.onerror = () => finish(false);
+      image.src = src;
+      if (image.complete) queueMicrotask(() => finish(Boolean(image.naturalWidth)));
+    });
+    assetPromises.push(ready);
     return image;
+  }
+
+  function waitForAssets(timeoutMs = 8000) {
+    if (!assetsReadyPromise) {
+      assetsReadyPromise = Promise.all(assetPromises).then((results) => {
+        const failed = results.filter((item) => !item.ok);
+        if (failed.length) console.warn("Phoebe Runner assets failed:", failed.map((item) => item.src));
+        return results;
+      });
+    }
+    return Promise.race([
+      assetsReadyPromise,
+      new Promise((resolve) => window.setTimeout(resolve, timeoutMs)),
+    ]);
+  }
+
+  function enableStartWhenAssetsReady() {
+    startBtn.disabled = true;
+    startBtn.textContent = "加载素材中";
+    waitForAssets().then(() => {
+      startBtn.disabled = false;
+      startBtn.textContent = "开始游戏";
+    });
   }
 
   function makeGame() {
@@ -331,6 +382,7 @@
       powerups: [],
       dust: [],
       shieldBits: [],
+      scoreSubmitted: false,
       motes: makeMotes(),
       weather: makeWeather(),
     };
@@ -386,6 +438,165 @@
     }
   }
 
+
+  function readPlayerName() {
+    try {
+      return (localStorage.getItem(PLAYER_NAME_KEY) || "").trim();
+    } catch {
+      return "";
+    }
+  }
+
+  function writePlayerName(value) {
+    try {
+      localStorage.setItem(PLAYER_NAME_KEY, sanitizePlayerName(value));
+    } catch {
+      // ignore private browsing storage failures
+    }
+  }
+
+  function sanitizePlayerName(value) {
+    return String(value || "")
+      .replace(/[\u0000-\u001f\u007f]/g, "")
+      .trim()
+      .slice(0, 18) || "菲比玩家";
+  }
+
+  function currentPlayerName() {
+    const name = sanitizePlayerName(playerNameInput?.value || readPlayerName());
+    if (playerNameInput) playerNameInput.value = name;
+    writePlayerName(name);
+    return name;
+  }
+
+  function setMenuVisible(visible) {
+    document.body.classList.toggle("is-playing", !visible);
+    mainMenu.hidden = !visible;
+    gameScreen.hidden = visible;
+    mainMenu.classList.toggle("is-hidden", !visible);
+    gameScreen.classList.toggle("is-hidden", visible);
+  }
+
+  function showMenu() {
+    if (returnMenuTimer) {
+      window.clearTimeout(returnMenuTimer);
+      returnMenuTimer = 0;
+    }
+    setMenuVisible(true);
+    game = makeGame();
+    jumpHeld = false;
+    duckHeld = false;
+    closeAllDialogs();
+    loadLeaderboard();
+    render();
+  }
+
+  function showGame() {
+    if (returnMenuTimer) {
+      window.clearTimeout(returnMenuTimer);
+      returnMenuTimer = 0;
+    }
+    closeAllDialogs();
+    setMenuVisible(false);
+    requestAnimationFrame(() => resizeCanvas());
+  }
+
+  async function lockLandscapeIfPossible() {
+    const mobileLike = window.matchMedia?.("(pointer: coarse)")?.matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (!mobileLike) return;
+    try {
+      if (document.fullscreenEnabled && !document.fullscreenElement && document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen({ navigationUI: "hide" });
+      }
+    } catch {
+      // iOS/Safari may reject fullscreen; CSS portrait gate still forces landscape UX.
+    }
+    try {
+      if (screen.orientation?.lock) await screen.orientation.lock("landscape");
+    } catch {
+      // Not supported on many mobile browsers.
+    }
+  }
+
+  async function beginRun() {
+    currentPlayerName();
+    confirmStartBtn.disabled = true;
+    confirmStartBtn.textContent = "加载素材中";
+    await waitForAssets();
+    confirmStartBtn.disabled = false;
+    confirmStartBtn.textContent = "开始跑";
+    await lockLandscapeIfPossible();
+    showGame();
+    restartGame();
+  }
+
+  function closeAllDialogs() {
+    for (const dialog of [leaderboardDialog, helpDialog, nameDialog]) {
+      if (dialog?.open) dialog.close();
+    }
+  }
+
+  function openDialog(dialog) {
+    closeAllDialogs();
+    if (typeof dialog?.showModal === "function") dialog.showModal();
+    else dialog?.setAttribute("open", "");
+  }
+
+  async function loadLeaderboard() {
+    if (!leaderboardList) return;
+    try {
+      const response = await fetch(`${LEADERBOARD_API}?limit=10`, { cache: "no-store" });
+      const payload = await response.json();
+      renderLeaderboard(Array.isArray(payload.entries) ? payload.entries : []);
+    } catch {
+      renderLeaderboard([]);
+      if (leaderboardEmpty) leaderboardEmpty.textContent = "排行榜暂时加载失败。";
+    }
+  }
+
+  function renderLeaderboard(entries) {
+    leaderboardList.replaceChildren();
+    if (!entries.length) {
+      leaderboardEmpty.classList.remove("is-hidden");
+      return;
+    }
+    leaderboardEmpty.classList.add("is-hidden");
+    for (const [index, entry] of entries.entries()) {
+      const item = document.createElement("li");
+      const rank = document.createElement("span");
+      const name = document.createElement("span");
+      const score = document.createElement("span");
+      rank.className = "rank-no";
+      name.className = "rank-name";
+      score.className = "rank-score";
+      rank.textContent = `#${index + 1}`;
+      name.textContent = String(entry.name || "菲比玩家");
+      score.textContent = padScore(entry.score || 0);
+      item.append(rank, name, score);
+      leaderboardList.append(item);
+    }
+  }
+
+  async function submitScore(score) {
+    if (game.scoreSubmitted || score <= 0) return;
+    game.scoreSubmitted = true;
+    const name = currentPlayerName();
+    try {
+      const response = await fetch(LEADERBOARD_API, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name, score }),
+      });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error(payload.error || "submit_failed");
+      const rankText = payload.rank ? `第 ${payload.rank} 名` : "已记录";
+      if (Array.isArray(payload.entries)) renderLeaderboard(payload.entries.slice(0, 10));
+      return rankText;
+    } catch {
+      return "提交失败";
+    }
+  }
+
   function resizeCanvas() {
     pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = Math.round(WIDTH * pixelRatio);
@@ -394,10 +605,9 @@
   }
 
   function startGame() {
-    if (game.mode === "gameover") game = makeGame();
+    if (game.mode === "gameover") return;
     if (game.mode === "ready") {
       game.mode = "running";
-      statusText.textContent = "菲比奔跑中";
     }
   }
 
@@ -405,13 +615,16 @@
     game = makeGame();
     jumpHeld = false;
     duckHeld = false;
+    showGame();
     game.mode = "running";
-    statusText.textContent = "菲比奔跑中";
   }
 
   function jump() {
     jumpHeld = true;
-    if (game.mode !== "running") startGame();
+    if (game.mode !== "running") {
+      if (game.mode === "ready") startGame();
+      if (game.mode !== "running") return;
+    }
     const player = game.player;
     if (game.mode === "running" && player.grounded) {
       duckHeld = false;
@@ -436,7 +649,10 @@
 
   function setDuckIntent(active) {
     duckHeld = active;
-    if (active && game.mode !== "running") startGame();
+    if (active && game.mode !== "running") {
+      if (game.mode === "ready") startGame();
+      if (game.mode !== "running") return;
+    }
   }
 
   function endGame() {
@@ -444,7 +660,11 @@
     game.mode = "gameover";
     game.shake = 10;
     writeBestScore(game.score);
-    statusText.textContent = "撞到障碍了，按 R 重开";
+    submitScore(game.score);
+    returnMenuTimer = window.setTimeout(() => {
+      returnMenuTimer = 0;
+      showMenu();
+    }, 1100);
   }
 
   function update(dt) {
@@ -959,10 +1179,7 @@
     drawOverlay();
     ctx.restore();
 
-    scoreText.textContent = padScore(game.score);
-    bestText.textContent = padScore(bestScore);
-    sceneText.textContent = scene.name;
-    if (game.mode === "running") statusText.textContent = runningStatusText();
+    scoreOverlay.textContent = padScore(game.score);
   }
 
   function runningStatusText() {
@@ -1445,20 +1662,7 @@
   }
 
   function drawOverlay() {
-    if (game.mode === "running") return;
-    ctx.save();
-    ctx.fillStyle = colors.paper;
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
-    ctx.fillStyle = colors.ink;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = "900 42px Trebuchet MS, Microsoft YaHei, sans-serif";
-    ctx.fillText(game.mode === "ready" ? "菲比快跑" : "游戏结束", WIDTH / 2, 166);
-    ctx.font = "900 22px Consolas, Microsoft YaHei, monospace";
-    ctx.fillText(game.mode === "ready" ? "SPACE / TAP TO RUN" : "PRESS R TO RETRY", WIDTH / 2, 214);
-    ctx.font = "800 18px Trebuchet MS, Microsoft YaHei, sans-serif";
-    ctx.fillText("分数越高速度越快，场景和障碍物会随进度变化", WIDTH / 2, 254);
-    ctx.restore();
+    // 游戏页保持干净：只渲染画面本身，分数由 DOM 覆盖层显示。
   }
 
   function tick(now) {
@@ -1471,6 +1675,13 @@
   }
 
   function onKeyDown(event) {
+    if (!mainMenu.classList.contains("is-hidden")) {
+      if (event.code === "Enter") {
+        event.preventDefault();
+        if (!startBtn.disabled) openDialog(nameDialog);
+      }
+      return;
+    }
     if (["Space", "ArrowUp", "KeyW"].includes(event.code)) {
       event.preventDefault();
       if (event.repeat) return;
@@ -1483,6 +1694,10 @@
     if (event.code === "KeyR") {
       event.preventDefault();
       restartGame();
+    }
+    if (event.code === "Escape") {
+      event.preventDefault();
+      showMenu();
     }
   }
 
@@ -1543,13 +1758,43 @@
   window.addEventListener("blur", releaseJump);
   bindJumpControl(canvas);
   bindJumpControl(jumpBtn);
-  restartBtn.addEventListener("click", restartGame);
-  duckBtn.addEventListener("pointerdown", () => setDuckIntent(true));
-  duckBtn.addEventListener("pointerup", () => setDuckIntent(false));
+  startBtn.addEventListener("click", () => {
+    if (!startBtn.disabled) openDialog(nameDialog);
+  });
+  confirmStartBtn.addEventListener("click", beginRun);
+  playerNameInput.addEventListener("keydown", (event) => {
+    if (event.code === "Enter") {
+      event.preventDefault();
+      beginRun();
+    }
+  });
+  leaderboardBtn.addEventListener("click", () => {
+    loadLeaderboard();
+    openDialog(leaderboardDialog);
+  });
+  helpBtn.addEventListener("click", () => openDialog(helpDialog));
+  exitGameBtn.addEventListener("click", showMenu);
+  refreshLeaderboardBtn.addEventListener("click", loadLeaderboard);
+  document.querySelectorAll("[data-close-dialog]").forEach((button) => {
+    button.addEventListener("click", () => button.closest("dialog")?.close());
+  });
+  duckBtn.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    setDuckIntent(true);
+  });
+  duckBtn.addEventListener("pointerup", (event) => {
+    event.preventDefault();
+    setDuckIntent(false);
+  });
   duckBtn.addEventListener("pointerleave", () => setDuckIntent(false));
   duckBtn.addEventListener("pointercancel", () => setDuckIntent(false));
 
+  enableStartWhenAssetsReady();
+  const savedName = readPlayerName();
+  if (savedName) playerNameInput.value = savedName;
   resizeCanvas();
+  setMenuVisible(true);
+  loadLeaderboard();
   render();
   requestAnimationFrame(tick);
 })();
